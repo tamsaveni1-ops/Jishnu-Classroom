@@ -5,3 +5,6 @@ gTTS
 streamlit-mic-recorder
 requests
 gdown
+google-genai
+Pillow
+streamlit-mic-recorder

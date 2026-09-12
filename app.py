@@ -9,7 +9,6 @@ import gdown
 from streamlit_mic_recorder import speech_to_text
 
 # --- 1. API செட்டப் ---
-# உங்கள் உண்மையான ஜெமினி API Key-ஐ கீழே உள்ள இரட்டை மேற்கோளுக்குள் போடவும்
 API_KEY = "AQ.Ab8RN6K3cb-7jBBUdAuJsAcfALtzSdUoWEVJdLAPDfqUmgK7GA"
 genai.configure(api_key=API_KEY)
 
@@ -25,7 +24,7 @@ teacher_persona = """
 """
 model = genai.GenerativeModel(model_name="gemini-1.5-flash", system_instruction=teacher_persona)
 
-# --- 3. கூகுள் டிரைவ் ஃபோல்டரிலிருந்து 400 MB புத்தகங்களை ஆட்டோ-டவுன்லோட் செய்தல் ---
+# --- 3. கூகுள் டிரைவ் ஃபோல்டரிலிருந்து புத்தகங்களை ஆட்டோ-டவுன்லோட் செய்தல் ---
 FOLDER_ID = "1e99M6r3j2_tRAsNksl52jb3E-fl09s6S"
 BOOKS_DIR = "ncert_books"
 
@@ -34,31 +33,55 @@ def download_drive_books():
     if not os.path.exists(BOOKS_DIR) or len(os.listdir(BOOKS_DIR)) == 0:
         os.makedirs(BOOKS_DIR, exist_ok=True)
         url = f'https://drive.google.com/drive/folders/{FOLDER_ID}'
-        with st.spinner("📚 ஜிஷ்ணுவின் புத்தகங்கள் கூகுள் டிரைவில் இருந்து டவுன்லோட் ஆகின்றன... (400 MB என்பதால் சிறிது நேரம் ஆகும்) ⏳"):
+        with st.spinner("📚 ஜிஷ்ணுவின் புத்தகங்கள் கூகுள் டிரைவில் இருந்து டவுன்லோட் ஆகின்றன... சிறிது நேரம் காத்திருக்கவும் ⏳"):
             try:
                 gdown.download_folder(url, output=BOOKS_DIR, quiet=False, use_cookies=False)
                 st.success("புத்தகங்கள் வெற்றிகரமாக டவுன்லோட் ஆகிவிட்டன!")
             except Exception as e:
-                st.error(f"டவுன்லோட் செய்வதில் சிறு துகள்: {e}")
+                st.error(f"டவுன்லோட் செய்வதில் பிழை: {e}")
 
 download_drive_books()
 
-# --- 4. ஃபோல்டரில் உள்ள அனைத்து PDF ஃபைல்களையும் ஆட்டோமேட்டிக்காகத் தேடுதல் ---
-def get_available_pdfs():
-    # ncert_books ஃபோல்டருக்குள் உள்ள அனைத்து PDF ஃபைல்களையும் பட்டியலிடும்
-    pdf_files = glob.glob(os.path.join(BOOKS_DIR, '**', '*.pdf'), recursive=True)
-    # ஒருவேளை வேறு ஃபோல்டருக்குள் டவுன்லோட் ஆகியிருந்தால் அதையும் சேர்த்துத் தேடும்
-    if not pdf_files:
-        pdf_files = glob.glob('*.pdf')
-    return {os.path.basename(f): f for f in pdf_files}
+# --- 4. 8-ஆம் வகுப்பு CBSE பாடத்திட்ட அமைப்பு (6 Subjects) ---
+cbse_syllabus = {
+    "Mathematics (கணிதம்)": ["Part 1", "Part 2"],
+    "Social Science (சமூக அறிவியல்)": ["Part 1", "Part 2"],
+    "Science (அறிவியல்)": ["Full Book"],
+    "English (ஆங்கிலம்)": ["Full Book"],
+    "Hindi (இந்தி)": ["Full Book"],
+    "Sanskrit (சமஸ்கிருதம்)": ["Full Book"]
+}
 
-pdf_dict = get_available_pdfs()
+# டிரைவில் டவுன்லோட் ஆன அனைத்து PDF ஃபைல்களையும் தேடும் வசதி
+def find_matching_pdf(subject_name, part_name):
+    all_pdfs = glob.glob(os.path.join(BOOKS_DIR, '**', '*.pdf'), recursive=True)
+    if not all_pdfs:
+        all_pdfs = glob.glob('*.pdf')
+    
+    # சப்ஜெக்ட் மற்றும் பார்ட் பெயருக்கு ஏற்ற ஃபைலைத் துல்லியமாகத் தேடுதல்
+    for path in all_pdfs:
+        fname = os.path.basename(path).lower()
+        sub_key = subject_name.split()[0].lower() # எ.கா: maths, science
+        if sub_key in fname:
+            if "part" in part_name.lower():
+                if part_name.lower().replace(" ", "") in fname.replace(" ", ""):
+                    return path
+            else:
+                return path
+                
+    # ஒருவேளை பெயர்கள் மாறாக இருந்தால், முதல் கிடைக்கும் PDF-ஐத் தரும்
+    return all_pdfs[0] if all_pdfs else ""
 
 # --- 5. நினைவாற்றல் மற்றும் பாயிண்ட்ஸ் செட்டப் ---
+subjects_flat_list = []
+for subj, parts in cbse_syllabus.items():
+    for p in parts:
+        subjects_flat_list.append(f"{subj} - {p}")
+
 if "memories" not in st.session_state:
-    st.session_state.memories = {}
+    st.session_state.memories = {item: [] for item in subjects_flat_list}
 if "chat_sessions" not in st.session_state:
-    st.session_state.chat_sessions = {}
+    st.session_state.chat_sessions = {item: model.start_chat(history=[]) for item in subjects_flat_list}
 if "score" not in st.session_state:
     st.session_state.score = 0
 
@@ -71,33 +94,23 @@ with col_title:
 with col_score:
     st.header(f"🏆 ஸ்கோர்: {st.session_state.score}")
 
-# --- 7. பக்கவாட்டு மெனு (Dynamic PDF Menu) ---
+# --- 7. பக்கவாட்டு மெனு (Subject & Book Selection) ---
 with st.sidebar:
     st.header("📚 பாடத்தைத் தேர்ந்தெடு")
     
-    if pdf_dict:
-        selected_pdf_name = st.selectbox("உள்ளمل புத்தகங்கள்:", list(pdf_dict.keys()))
-        pdf_path = pdf_dict[selected_pdf_name]
-    else:
-        selected_pdf_name = "None"
-        pdf_path = ""
-        st.warning("புத்தகங்கள் இன்னும் டவுன்லோட் ஆகவில்லை அல்லது கிடைக்கவில்லை.")
-
+    selected_subject = st.selectbox("சப்ஜெக்ட்:", list(cbse_syllabus.keys()))
+    selected_part = st.selectbox("புத்தகம் / பகுதி:", cbse_syllabus[selected_subject])
+    
     page_number = st.number_input("பக்க எண்:", min_value=1, max_value=1000, value=1)
-
-# சப்ஜெக்ட் பெயரை ஃபைல் பெயரிலிருந்தே எடுத்துக்கொள்வது
-current_subject = selected_pdf_name.replace(".pdf", "") if selected_pdf_name != "None" else "General"
-
-if current_subject not in st.session_state.memories:
-    st.session_state.memories[current_subject] = []
-if current_subject not in st.session_state.chat_sessions:
-    st.session_state.chat_sessions[current_subject] = model.start_chat(history=[])
+    
+    current_selection_key = f"{selected_subject} - {selected_part}"
+    pdf_path = find_matching_pdf(selected_subject, selected_part)
 
 # --- 8. மெயின் திரை (PDF மற்றும் உரையாடல்) ---
 col1, col2 = st.columns([1, 1])
 
 with col1:
-    st.subheader("📖 பாடப்புத்தகம் & ஃபோகஸ் மோடு")
+    st.subheader(f"📖 {selected_subject} ({selected_part})")
     page_text = ""
     
     if pdf_path and os.path.exists(pdf_path):
@@ -107,22 +120,22 @@ with col1:
                 page = doc.load_page(page_number - 1)
                 pix = page.get_pixmap()
                 img_bytes = pix.tobytes("png")
-                st.image(img_bytes, caption=f"பக்கம் {page_number} ({selected_pdf_name})", use_column_width=True)
+                st.image(img_bytes, caption=f"பக்கம் {page_number} (மொத்த பக்கங்கள்: {len(doc)})", use_column_width=True)
                 
                 page_text = page.get_text("text")
                 with st.expander("🔍 இந்த பக்கத்தில் உள்ள முக்கிய வரிகள்"):
                     st.write(page_text)
             else:
-                st.error(f"இந்தப் புத்தகம் மொத்தம் {len(doc)} பக்கங்களை மட்டுமே கொண்டுள்ளது.")
+                st.error(f"இந்தப் புத்தகத்தில் மொத்தம் {len(doc)} பக்கங்கள் மட்டுமே உள்ளன.")
         except Exception as e:
             st.error(f"PDF வாசிப்பதில் பிழை: {e}")
     else:
-        st.info("📁 கூகுள் டிரைவில் இருந்து புத்தகங்கள் முழுமையாக லோட் ஆனதும் பக்கம் இங்கே தெரியும். சிறிது நேரம் காத்திருக்கவும்.")
+        st.info("📁 புத்தகங்கள் கூகுள் டிரைவில் இருந்து லோட் ஆகிக்கொண்டிருக்கின்றன... சிறிது நேரம் காத்திருக்கவும்.")
 
 with col2:
-    st.subheader(f"👩‍🏫 ஆசிரியர் (பாடம்: {selected_pdf_name})")
+    st.subheader(f"👩‍🏫 {selected_subject} ஆசிரியர்")
     
-    for msg in st.session_state.memories[current_subject]:
+    for msg in st.session_state.memories[current_selection_key]:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
@@ -135,12 +148,12 @@ with col2:
     if user_input:
         with st.chat_message("user"):
             st.markdown(user_input)
-        st.session_state.memories[current_subject].append({"role": "user", "content": user_input})
+        st.session_state.memories[current_selection_key].append({"role": "user", "content": user_input})
         
         with st.chat_message("assistant"):
             with st.spinner("ஆசிரியர் அன்புடனும் பொறுமையாகவும் பதிலளிக்கிறார்..."):
                 full_prompt = f"மாணவன் ஜிஷ்ணுவின் கேள்வி/பதில்: {user_input}\n\nதற்போது அவன் படிக்கும் புத்தகப் பக்கம்: {page_text}"
-                response = st.session_state.chat_sessions[current_subject].send_message(full_prompt)
+                response = st.session_state.chat_sessions[current_selection_key].send_message(full_prompt)
                 bot_reply = response.text
                 st.markdown(bot_reply)
                 
@@ -158,5 +171,5 @@ with col2:
                 except:
                     pass
 
-        st.session_state.memories[current_subject].append({"role": "assistant", "content": bot_reply})
+        st.session_state.memories[current_selection_key].append({"role": "assistant", "content": bot_reply})
         st.rerun()

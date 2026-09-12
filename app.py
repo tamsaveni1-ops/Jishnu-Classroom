@@ -251,11 +251,14 @@ with tab_classroom:
             st.session_state.memories[session_key].append({"role": "assistant", "content": display_text})
             st.rerun()
 
+# (இங்கு tab_classroom மற்றும் tab_test பகுதிகள் வழக்கம் போல வரும்)
+
 with tab_test:
-    with tab_english:
+    st.write("Exams and Quizzes go here.")
+
+with tab_english:
     st.header("🗣️ Spoken English Lab")
     st.write("ஜிஸ்னு, நீ இப்போது படித்துக் கொண்டிருக்கும் பக்கத்தில் உள்ள ஆங்கில வார்த்தைகளையும், வாக்கியம் அமைக்கும் முறையையும் இங்கே கற்றுக் கொள்வோம்!")
-    
     if st.button("🚀 இந்தப் பக்கத்தின் English பாடத்தைத் தொடங்கு"):
         if page_text:
             with st.spinner("ஆங்கில ஆசிரியை தயார் ஆகிறார்..."):
@@ -281,7 +284,6 @@ with tab_test:
 with tab_hindi:
     st.header("🗣️ Spoken Hindi Lab")
     st.write("ஜிஸ்னு, இந்தப் பாடத்தின் கருத்துகளை வைத்து கொஞ்சம் ஹிந்தி பேசுவோமா?")
-    
     if st.button("🚀 இந்தப் பக்கத்தின் Hindi பாடத்தைத் தொடங்கு"):
         if page_text:
             with st.spinner("ஹிந்தி ஆசிரியை தயார் ஆகிறார்..."):

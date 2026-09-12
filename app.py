@@ -10,7 +10,6 @@ import json
 import time
 from gtts import gTTS
 
-# Voice recorder import with fallback
 try:
     from streamlit_mic_recorder import speech_to_text
     mic_available = True
@@ -18,42 +17,40 @@ except ImportError:
     mic_available = False
 
 # ==========================================
-# 1. API KEYS & SMART ENGINE CONFIGURATION
+# 1. API KEYS
 # ==========================================
 API_KEYS = [
     st.secrets["GEMINI_API_KEY_1"],
     st.secrets["GEMINI_API_KEY_2"]
 ]
-
 cooldown_tracker = {}
 key_models_cache = {}
 
-# ADVANCED SYSTEM INSTRUCTION: Paragraph-by-Paragraph Teaching Mode added
+# ==========================================
+# 2. THE WORLD-CLASS SYSTEM INSTRUCTION
+# ==========================================
 SYSTEM_INSTRUCTION = """
-You are a highly energetic, friendly, and real human-like Digital Tutor sitting right next to a Grade 8 CBSE student named Jishnu. You act with the affection and enthusiasm of a favorite teacher or mother.
+You are a highly energetic, world-class Digital Smart Teacher sitting right next to a Grade 8 CBSE student named Jishnu. You act with the affection and enthusiasm of a favorite teacher.
 
-CRITICAL TEACHING METHODOLOGY & BEHAVIOR RULES:
-1. NO TIME WASTING: DO NOT repeat Jishnu's question. Jump straight into the explanation immediately with high energy.
-2. PARAGRAPH-BY-PARAGRAPH TEACHING (CRITICAL): When explaining a specific page, you MUST break it down paragraph by paragraph so he can follow along in his book. 
-   - Say: "இந்த முதல் பத்தியில (In this first paragraph)..." and explain it.
-   - Say: "அடுத்து ரெண்டாவது பத்தியில பாரு..." and explain it. 
-3. STORY-LIKE INTRO: If it is a new chapter, do not teach paragraphs yet. Start by giving a grand, exciting summary of the entire chapter. Make it sound like a fascinating story.
-4. THE "SITTING NEXT TO YOU" VIBE: Ask rhetorical questions like "புரியுதா?", "ஏன் தெரியுமா?", "இப்ப பாரு" to keep him hooked. Use real-world examples.
-5. MULTILINGUAL ENCOURAGEMENT: After explaining in Tamil, gradually introduce English and Hindi technical terms.
-6. REWARDS & ENCOURAGEMENT: When Jishnu answers correctly, praise him exactly with this phrase: "மிகவும் சிறப்பு ஜிஷ்ணு கண்ணா! உனக்கு 10 பாயிண்டுகள்!"
-7. STRICT LANGUAGE SEPARATION: 
-   - "display_text": Use clear, concise Markdown bullet points (English/Tamil) for the screen.
-   - "spoken_tamil": MUST be in 100% COLLOQUIAL SPOKEN TAMIL (பேச்சுத் தமிழ்). Keep the sentences short, punchy, and natural.
+CRITICAL TEACHING METHODOLOGY:
+1. THE GRAND INTRO (CHAPTER SUMMARY): If it's a new chapter, DO NOT teach paragraphs yet. Tell him a fascinating, story-like summary of the ENTIRE chapter. Explain WHY this chapter is important for his real life and what he will learn.
+2. PARAGRAPH-BY-PARAGRAPH: When explaining a page, break it down paragraph by paragraph. Say: "முதல் பத்தியில..." and "ரெண்டாவது பத்தியில...".
+3. MULTILINGUAL & VOCABULARY (CRITICAL): In every page explanation, pick 2 or 3 important English words from the textbook. Teach him the meaning in Tamil, and tell him how to say it in Spoken English and Spoken Hindi. 
+4. INTERACTIVE TESTING: Always end your page explanation by asking one simple, thought-provoking question to check if he understood. 
+5. Q&A MODE: If asked for important questions, provide the top exam-focused questions and clear answers.
+6. TONE & LANGUAGE: 
+   - "display_text": Concise, highly structured bullet points mapping to the paragraphs and vocabulary.
+   - "spoken_tamil": 100% COLLOQUIAL SPOKEN TAMIL (பேச்சுத் தமிழ்). Use an energetic, fast-paced tone. NEVER use formal written Tamil.
 
 OUTPUT FORMAT (STRICT JSON):
 {
-  "display_text": "Highly structured, bite-sized bullet points for easy reading.",
-  "spoken_tamil": "100% Colloquial Spoken Tamil teaching paragraph by paragraph. Sounds exactly like a human sitting next to him."
+  "display_text": "Structured bullet points, vocabulary words, and the ending question.",
+  "spoken_tamil": "100% Conversational Spoken Tamil lecture."
 }
 """
 
 # ==========================================
-# 2. MULTI-KEY & MULTI-MODEL FAILOVER ENGINE (YOUR ORIGINAL ROBUST CODE)
+# 3. AI ENGINE & RAG CACHE
 # ==========================================
 def get_available_models(client, key_label):
     try:
@@ -63,10 +60,7 @@ def get_available_models(client, key_label):
             if 'gemini' in name.lower() and 'embed' not in name.lower() and 'aqa' not in name.lower():
                 if 'tts' not in name.lower() and 'image' not in name.lower() and 'audio' not in name.lower():
                     available_models.append(name)
-        
-        flash_models = [m for m in available_models if 'flash' in m.lower()]
-        pro_models = [m for m in available_models if 'pro' in m.lower()]
-        return {'flash': flash_models, 'pro': pro_models}
+        return {'flash': [m for m in available_models if 'flash' in m.lower()], 'pro': [m for m in available_models if 'pro' in m.lower()]}
     except Exception:
         return {'flash': ['gemini-1.5-flash'], 'pro': ['gemini-1.5-pro']}
 
@@ -74,43 +68,20 @@ def generate_ai_response(contents_payload, max_attempts=2):
     for attempt in range(max_attempts):
         for key_index, key in enumerate(API_KEYS, 1):
             key_label = f"Key-{key_index}"
-            if key_label in cooldown_tracker and time.time() < cooldown_tracker[key_label]:
-                continue
-
+            if key_label in cooldown_tracker and time.time() < cooldown_tracker[key_label]: continue
             client = genai.Client(api_key=key)
-            if key not in key_models_cache:
-                key_models_cache[key] = get_available_models(client, key_label)
-
+            if key not in key_models_cache: key_models_cache[key] = get_available_models(client, key_label)
             for model_name in list(key_models_cache[key]['flash']):
                 tracker_key = f"{key_label}_{model_name}"
-                if tracker_key in cooldown_tracker and time.time() < cooldown_tracker[tracker_key]:
-                    continue
-
+                if tracker_key in cooldown_tracker and time.time() < cooldown_tracker[tracker_key]: continue
                 try:
-                    config = types.GenerateContentConfig(
-                        system_instruction=SYSTEM_INSTRUCTION,
-                        temperature=0.7,
-                        response_mime_type="application/json"
-                    )
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=contents_payload,
-                        config=config
-                    )
-                    if response.text:
-                        return response.text, model_name, key_label
+                    config = types.GenerateContentConfig(system_instruction=SYSTEM_INSTRUCTION, temperature=0.7, response_mime_type="application/json")
+                    response = client.models.generate_content(model=model_name, contents=contents_payload, config=config)
+                    if response.text: return response.text, model_name, key_label
                 except Exception as e:
-                    err_msg = str(e)
-                    if "404" in err_msg:
-                        key_models_cache[key]['flash'].remove(model_name)
-                    elif "429" in err_msg or "Quota" in err_msg:
-                        cooldown_tracker[tracker_key] = time.time() + 60
-                    elif "403" in err_msg:
-                        cooldown_tracker[key_label] = time.time() + 3600
-                        break
+                    if "429" in str(e) or "Quota" in str(e): cooldown_tracker[tracker_key] = time.time() + 60
         time.sleep(2)
-
-    return '{"display_text": "AI Server is currently busy. Please try asking again in a few seconds!", "spoken_tamil": "மன்னிக்கவும் ஜிஸ்னு, சர்வர் கொஞ்சம் பிஸியாக இருக்கிறது. சிறிது நேரம் கழித்து மீண்டும் கேட்கவும்."}', "Fallback", "None"
+    return '{"display_text": "AI Server is busy.", "spoken_tamil": "சர்வர் பிஸியா இருக்கு ஜிஸ்னு, கொஞ்ச நேரம் கழிச்சு கேளு."}', "Fallback", "None"
 
 def text_to_audio_bytes(spoken_text):
     try:
@@ -120,54 +91,29 @@ def text_to_audio_bytes(spoken_text):
         tts.write_to_fp(fp)
         fp.seek(0)
         return fp
-    except Exception:
-        return None
+    except Exception: return None
 
-# ==========================================
-# 3. LOCAL JSON CACHE ENGINE
-# ==========================================
 def get_chapter_json_cache(subject_name, chapter_name, pdf_text):
     os.makedirs("cache", exist_ok=True)
-    safe_subject = subject_name.split()[0].lower()
-    safe_chapter = chapter_name.replace(" ", "_").lower()
-    json_path = f"cache/{safe_subject}_{safe_chapter}.json"
-
+    json_path = f"cache/{subject_name.split()[0].lower()}_{chapter_name.replace(' ', '_').lower()}.json"
     if os.path.exists(json_path):
         try:
-            with open(json_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-
-    prompt = f"""
-    Analyze the following Grade 8 textbook text for Subject: {subject_name}, Chapter: {chapter_name}.
-    Extract and structure the data into a clean JSON format with these exact keys:
-    1. "chapter_summary": Comprehensive explanation of concepts.
-    2. "vocabulary": List of key words with Tamil, English, and Hindi translations/meanings.
-    3. "key_questions": Top 10 important questions and detailed answers.
-
-    Textbook Content:
-    {pdf_text[:12000]}
-    """
-    
+            with open(json_path, "r", encoding="utf-8") as f: return json.load(f)
+        except Exception: pass
+    prompt = f"Analyze Grade 8 textbook text for Subject: {subject_name}, Chapter: {chapter_name}. Extract: 1. 'chapter_summary' 2. 'vocabulary' 3. 'key_questions' in JSON format."
     try:
         client = genai.Client(api_key=API_KEYS[0])
-        config = types.GenerateContentConfig(response_mime_type="application/json")
-        response = client.models.generate_content(model='gemini-1.5-flash', contents=[prompt], config=config)
+        response = client.models.generate_content(model='gemini-1.5-flash', contents=[prompt + "\n\n" + pdf_text[:12000]], config=types.GenerateContentConfig(response_mime_type="application/json"))
         data = json.loads(response.text)
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        with open(json_path, "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False, indent=2)
         return data
-    except Exception:
-        return {"chapter_summary": "Summary not available.", "vocabulary": [], "key_questions": []}
+    except Exception: return {"chapter_summary": "Summary not available.", "vocabulary": [], "key_questions": []}
 
 # ==========================================
-# 4. APP SETUP & SYLLABUS CONFIG
+# 4. APP SETUP & UI
 # ==========================================
 st.set_page_config(layout="wide", page_title="Jishnu's Smart AI Classroom", page_icon="🎓")
-
 BOOKS_DIR = "ncert_books"
-
 cbse_syllabus = {
     "Mathematics": [f"Chapter {i}" for i in range(1, 20)],
     "Science": [f"Chapter {i}" for i in range(1, 20)],
@@ -177,124 +123,78 @@ cbse_syllabus = {
     "Sanskrit": [f"Chapter {i}" for i in range(1, 20)],
 }
 
-if "memories" not in st.session_state:
-    st.session_state.memories = {}
-if "score" not in st.session_state:
-    st.session_state.score = 0
-if "last_chapter_read" not in st.session_state:
-    st.session_state.last_chapter_read = ""
-if "last_page_read" not in st.session_state:
-    st.session_state.last_page_read = 0
+if "memories" not in st.session_state: st.session_state.memories = {}
+if "score" not in st.session_state: st.session_state.score = 0
+if "last_chapter_read" not in st.session_state: st.session_state.last_chapter_read = ""
+if "last_page_read" not in st.session_state: st.session_state.last_page_read = 0
+if "current_audio" not in st.session_state: st.session_state.current_audio = None
 
-# ==========================================
-# 5. SIDEBAR NAVIGATION
-# ==========================================
 with st.sidebar:
-    st.header("📚 Curriculum & Chapter Selection")
+    st.header("📚 Curriculum Selection")
     selected_subject = st.selectbox("1. Select Subject:", list(cbse_syllabus.keys()))
     selected_chapter = st.selectbox("2. Select Chapter:", cbse_syllabus[selected_subject])
-    
     st.divider()
-    st.markdown("**3. Select Specific Book / Part:**")
-    
     search_keyword = selected_subject.split()[0].lower()
     available_pdfs = glob.glob(os.path.join(BOOKS_DIR, '**', f'*{search_keyword}*.pdf'), recursive=True)
-    
-    if not available_pdfs:
-        available_pdfs = glob.glob(os.path.join(BOOKS_DIR, '**', '*.pdf'), recursive=True)
-        
-    selected_pdf_path = None
-    if available_pdfs:
-        selected_pdf_path = st.selectbox("Choose PDF File:", available_pdfs, format_func=lambda x: os.path.basename(x))
-    else:
-        st.error("⚠️ No PDFs found! Please check GitHub 'ncert_books' folder.")
-    
+    if not available_pdfs: available_pdfs = glob.glob(os.path.join(BOOKS_DIR, '**', '*.pdf'), recursive=True)
+    selected_pdf_path = st.selectbox("3. Choose PDF File:", available_pdfs, format_func=lambda x: os.path.basename(x)) if available_pdfs else None
+    if not available_pdfs: st.error("⚠️ No PDFs found!")
     st.divider()
     page_number = st.number_input("4. Textbook Page Number:", min_value=1, max_value=500, value=1)
     
 session_key = f"{selected_subject} - {selected_chapter}"
-if session_key not in st.session_state.memories:
-    st.session_state.memories[session_key] = []
+if session_key not in st.session_state.memories: st.session_state.memories[session_key] = []
 
-# ==========================================
-# 6. HEADER & TOP NAVIGATION TABS
-# ==========================================
 col_title, col_score = st.columns([3, 1])
-with col_title:
-    st.title("🎓 Jishnu's Smart AI Classroom - Grade 8 CBSE")
-with col_score:
-    st.header(f"🏆 Score: {st.session_state.score} PTS")
+with col_title: st.title("🎓 Jishnu's Smart AI Classroom")
+with col_score: st.header(f"🏆 Score: {st.session_state.score} PTS")
 
-tab_classroom, tab_test, tab_progress = st.tabs([
-    "📖 Interactive Page Classroom", 
-    "📝 AI Evaluation & Quizzes", 
-    "🏆 Student Progress & Score"
-])
+tab_classroom, tab_test = st.tabs(["📖 Interactive Page Classroom", "📝 AI Evaluation & Quizzes"])
 
-# ==========================================
-# TAB 1: INTERACTIVE CLASSROOM
-# ==========================================
 with tab_classroom:
     col1, col2 = st.columns([1, 1.2])
 
-    # Left Column: Textbook Reader
     with col1:
         st.subheader(f"📖 {selected_subject} Reader")
-        st.caption(f"📌 Active Chapter: **{selected_chapter}** | Page: **{page_number}**")
-            
-        page_text = ""
-        cached_chapter_data = {}
-
+        page_text, cached_chapter_data = "", {}
         if selected_pdf_path:
             try:
                 doc = fitz.open(selected_pdf_path)
                 if page_number <= len(doc):
                     page = doc.load_page(page_number - 1)
-                    pix = page.get_pixmap()
-                    img_bytes = pix.tobytes("png")
-                    st.image(img_bytes, caption=f"Page {page_number}", width="stretch")
+                    st.image(page.get_pixmap().tobytes("png"), caption=f"Page {page_number}", width="stretch")
                     page_text = page.get_text("text")
-                    
                     full_pdf_text = "".join([doc.load_page(i).get_text("text") for i in range(min(15, len(doc)))])
                     cached_chapter_data = get_chapter_json_cache(selected_subject, selected_chapter, full_pdf_text)
+                    with st.expander("🔍 View Extracted Text"): st.write(page_text)
+                else: st.error("Page out of range.")
+            except Exception as e: st.error("Error opening PDF.")
 
-                    with st.expander("🔍 View Extracted Text"):
-                        st.write(page_text)
-                    with st.expander("💡 Chapter Vocabulary & Summary Cache"):
-                        st.json(cached_chapter_data)
-                else:
-                    st.error(f"This textbook has only {len(doc)} pages.")
-            except Exception as e:
-                st.error(f"Error opening PDF: {e}")
-        else:
-            st.warning("📁 PDF file not selected or not found. Please select a book from the Sidebar.")
-
-    # Right Column: AI Smart Teacher Chat
     with col2:
         st.subheader("👩‍🏫 AI Smart Teacher Interface")
         
-        # Audio Player at Top for easy pause
-        audio_placeholder = st.empty()
-        
+        # ஆடியோ பிளேயர் எப்பொழுதும் மேலே (Top) இருக்கும். பழைய ஆடியோக்கள் மறைக்கப்படும்.
+        if st.session_state.current_audio:
+            st.audio(st.session_state.current_audio.getvalue(), format="audio/mp3", autoplay=True)
+            st.caption("👆 பிளேயரை நிறுத்த அல்லது மீண்டும் கேட்க இங்கு அழுத்தவும்.")
+        st.divider()
+
+        # முக்கிய கேள்வி பதில்கள் Button
+        col_btn1, col_btn2 = st.columns(2)
+        qa_requested = False
+        with col_btn1:
+            if st.button("📝 முக்கிய கேள்வி-பதில்கள் (Q&A)"):
+                qa_requested = True
+
+        # Render Chat History (Without old audio players to keep it clean)
         for msg in st.session_state.memories[session_key]:
             with st.chat_message(msg["role"]):
-                if "image" in msg:
-                    st.image(msg["image"], width="stretch")
+                if "image" in msg: st.image(msg["image"], width="stretch")
                 st.markdown(msg["content"])
-                if "audio" in msg and msg["audio"]:
-                    st.audio(msg["audio"].getvalue(), format="audio/mp3")
-
-        st.divider()
         
-        voice_text = ""
-        if mic_available:
-            st.markdown("🎤 **Click to speak (in Tamil/English):**")
-            voice_text = speech_to_text(language='ta-IN', use_container_width=True, just_once=True, key=f'mic_{session_key}')
-
-        uploaded_file = st.file_uploader("📸 Upload Homework / Answer Sheet:", type=["png", "jpg", "jpeg", "pdf"], key=f'up_{session_key}')
+        voice_text = speech_to_text(language='ta-IN', use_container_width=True, just_once=True, key=f'mic_{session_key}') if mic_available else ""
         text_input = st.chat_input("Ask your teacher a question...")
         
-        # --- NEW LOGIC: Smart Triggers ---
         chapter_changed = False
         if st.session_state.last_chapter_read != selected_chapter:
             chapter_changed = True
@@ -304,112 +204,47 @@ with tab_classroom:
         if st.session_state.last_page_read != page_number:
             page_turned = True
             st.session_state.last_page_read = page_number
-        # ---------------------------------
         
         user_input = voice_text if voice_text else text_input
         
-        if chapter_changed and not user_input:
-            user_input = "TEACHER_INSTRUCTION: This is a new chapter. Jishnu just opened it. Give a fascinating, story-like summary of the entire chapter to create interest. Do not teach paragraphs yet."
-            
+        if qa_requested:
+            user_input = "TEACHER_INSTRUCTION: ஜிஸ்னு இந்த பாடத்தின் முக்கிய கேள்வி பதில்களைக் கேட்கிறான். பாடத்தின் மிக முக்கியமான 3-5 கேள்விகளைக் கூறி, அதற்கான விடைகளை எளிமையாக விளக்கு."
+        elif chapter_changed and not user_input:
+            user_input = "TEACHER_INSTRUCTION: This is a new chapter. Give a grand, fascinating summary of the ENTIRE chapter to create interest. Explain why it is useful in real life. Do not teach paragraphs yet."
         elif page_turned and not user_input:
-            user_input = "TEACHER_INSTRUCTION: Jishnu is looking at this exact page now. Look at the page text. Explain it PARAGRAPH BY PARAGRAPH. Say 'முதல் பத்தியில...' and explain clearly."
+            user_input = "TEACHER_INSTRUCTION: Explain this page PARAGRAPH BY PARAGRAPH. Also teach 2-3 English/Hindi vocabulary words from this page. End by asking a question."
 
-        if user_input or uploaded_file:
-            image_to_process = None
-            
-            with st.chat_message("user"):
-                if uploaded_file:
-                    if uploaded_file.type == "application/pdf":
-                        pdf_bytes = uploaded_file.read()
-                        pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-                        first_page = pdf_doc.load_page(0)
-                        pix = first_page.get_pixmap()
-                        image_to_process = Image.open(io.BytesIO(pix.tobytes("png")))
-                        st.image(image_to_process, width=200, caption="Uploaded Document")
-                    else:
-                        image_to_process = Image.open(uploaded_file)
-                        st.image(image_to_process, width=200, caption="Uploaded Image")
-                
-                # Hide instructions from screen
-                if user_input and not user_input.startswith("TEACHER_INSTRUCTION"):
-                    st.markdown(user_input)
-
-            # Hide instructions from memory
-            if not (user_input and user_input.startswith("TEACHER_INSTRUCTION")):
-                memory_entry = {"role": "user", "content": user_input if user_input else "Teacher, look at my document."}
-                if image_to_process:
-                    memory_entry["image"] = image_to_process
-                st.session_state.memories[session_key].append(memory_entry)
+        if user_input:
+            if not user_input.startswith("TEACHER_INSTRUCTION"):
+                with st.chat_message("user"): st.markdown(user_input)
+                st.session_state.memories[session_key].append({"role": "user", "content": user_input})
 
             with st.chat_message("assistant"):
-                with st.spinner("Teacher is analyzing..."):
-                    
+                with st.spinner("Teacher is thinking..."):
                     prompt_context = f"""
                     Subject: {selected_subject} - {selected_chapter}
                     Current Page Number: {page_number}
-                    Text Content of Current Page: {page_text[:1500]}
-                    Chapter Pre-cached Summary/Vocabulary: {str(cached_chapter_data)[:1000]}
-
-                    Student Interaction / Question: {user_input if user_input else 'Please explain this.'}
+                    Page Text: {page_text[:1500]}
+                    Chapter Summary: {str(cached_chapter_data)[:1000]}
+                    Request: {user_input}
                     """
-
-                    contents_payload = [prompt_context]
-                    if image_to_process:
-                        contents_payload.append(image_to_process)
-
-                    bot_reply_json, used_model, used_key = generate_ai_response(contents_payload)
-                    
+                    bot_reply_json, used_model, used_key = generate_ai_response([prompt_context])
                     try:
                         parsed_response = json.loads(bot_reply_json)
-                        display_text = parsed_response.get("display_text", "Sorry, error formatting text.")
-                        spoken_tamil = parsed_response.get("spoken_tamil", "மன்னிக்கவும், பிழை ஏற்பட்டுள்ளது.")
+                        display_text = parsed_response.get("display_text", "Error formatting text.")
+                        spoken_tamil = parsed_response.get("spoken_tamil", bot_reply_json)
                     except:
                         display_text = bot_reply_json
                         spoken_tamil = bot_reply_json
                     
                     st.markdown(display_text)
-                    st.caption(f"⚡ Model Used: `{used_model}` ({used_key})")
                     
-                    if "10 Points" in display_text or "10 பாயிண்டுகள்" in display_text:
-                        st.session_state.score += 10
-
                     audio_fp = text_to_audio_bytes(spoken_tamil)
                     if audio_fp:
-                        audio_placeholder.audio(audio_fp.getvalue(), format="audio/mp3", autoplay=True)
+                        st.session_state.current_audio = audio_fp # சேமிக்கப்படும் புதிய ஆடியோ
 
-            st.session_state.memories[session_key].append({
-                "role": "assistant", 
-                "content": display_text,
-                "audio": audio_fp
-            })
+            st.session_state.memories[session_key].append({"role": "assistant", "content": display_text})
             st.rerun()
 
-# ==========================================
-# TAB 2 & 3: EXAMS, QUIZZES & PROGRESS
-# ==========================================
 with tab_test:
-    st.header(f"📝 {selected_subject} - Examination & Quizzes")
-    col_q1, col_q2 = st.columns(2)
-    with col_q1:
-        if st.button("🎯 Generate Quick 5-Minute Quiz"):
-            with st.spinner("Generating Quiz..."):
-                quiz_prompt = [f'Generate a 3-question interactive quiz with answer options for Grade 8 CBSE {selected_subject} - {selected_chapter}. Format output as JSON with "display_text" and "spoken_tamil".']
-                reply_json, _, _ = generate_ai_response(quiz_prompt)
-                try:
-                    st.markdown(json.loads(reply_json).get("display_text", ""))
-                except:
-                    st.markdown(reply_json)
-                
-    with col_q2:
-        if st.button("📄 Generate 20-Mark Exam Paper"):
-            with st.spinner("Creating Exam Paper..."):
-                exam_prompt = [f'Create a formal 20-mark model question paper based on Grade 8 CBSE curriculum for {selected_subject} - {selected_chapter}. Format output as JSON with "display_text" and "spoken_tamil".']
-                reply_json, _, _ = generate_ai_response(exam_prompt)
-                try:
-                    st.markdown(json.loads(reply_json).get("display_text", ""))
-                except:
-                    st.markdown(reply_json)
-
-with tab_progress:
-    st.header("🏆 Jishnu's Academic Performance")
-    st.metric(label="Total Points Earned", value=f"{st.session_state.score} PTS")
+    st.write("Exams and Quizzes go here.")

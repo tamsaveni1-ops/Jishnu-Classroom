@@ -9,6 +9,207 @@ import gdown
 from streamlit_mic_recorder import speech_to_text
 
 # --- 1. API செட்டப் ---
+API_KEY = "AQ.Ab8RN6JARqdri9ZKhwUiEN6iPXVng1LSaFQPVvQ3TZVmaUJV8w"  # உங்கள் உண்மையான ஜெமினி கீயை இங்கே போடவும்
+
+try:
+    genai.configure(api_key=API_KEY)
+    model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+except Exception as e:
+    st.error(f"API செட்டப் செய்வதில் பிழை: {e}")
+
+# --- 2. தாயும் ஆசிரியருமான மேம்படுத்தப்பட்ட AI Persona ---
+teacher_persona = """
+நீ 14 வயது மாணவன் ஜிஷ்ணுவுக்கு 8-ஆம் வகுப்பு பாடங்களை நடத்தும் ஒரு உலகத்தரம் வாய்ந்த டிஜிட்டல் ஆசிரியர். 
+அதே சமயம், ஒரு தாயின் அன்போடும், பரிவோடும் அவனுக்குப் பாடம் சொல்லிக் கொடுக்க வேண்டும்.
+உன் முக்கிய நோக்கங்கள்:
+1. ஆரம்பத்தில் அவனுக்குத் தாய்மொழியான தமிழில் மிக எளிமையாக, ஒரு அம்மா கதை சொல்வது போல விளக்க வேண்டும். 
+2. போகப்போக ஆங்கிலம் மற்றும் ஹிந்தி வார்த்தைகளை உரையாடலில் கலந்து, அவனையும் அந்த மொழிகளில் பேசத் தூண்ட வேண்டும்.
+3. அவன் நன்றாகப் பதில் சொன்னால், "மிகவும் சிறப்பு ஜிஷ்ணு கண்ணா! உனக்கு 10 பாயிண்டுகள்!" என்று சொல்லி அவனை உற்சாகப்படுத்த வேண்டும்.
+4. அவன் கேட்கும் கேள்விகளுக்குக் கோபப்படாமல், மிகப்பொறுமையாகப் பதிலளிக்க வேண்டும்.
+"""
+
+# --- 3. கூகுள் டிரைவ் ஃபோல்டரிலிருந்து புத்தகங்களை டவுன்லோட் செய்யும் பகுதி ---
+FOLDER_ID = "1e99M6r3j2_tRAsNksl52jb3E-fl09s6S"
+BOOKS_DIR = "ncert_books"
+
+st.set_page_config(layout="wide", page_title="ஜிஷ்ணுவின் ஸ்மார்ட் கிளாஸ்ரூம்")
+
+@st.cache_resource
+def download_drive_books_with_status():
+    os.makedirs(BOOKS_DIR, exist_ok=True)
+    existing_files = glob.glob(os.path.join(BOOKS_DIR, '**', '*.pdf'), recursive=True)
+    
+    if len(existing_files) >= 6:
+        return f"மொத்தம் {len(existing_files)} புத்தகங்கள் ஏற்கனவே டவுன்லோட் செய்யப்பட்டுள்ளன."
+    
+    url = f'https://drive.google.com/drive/folders/{FOLDER_ID}'
+    status_placeholder = st.empty()
+    progress_bar = st.progress(0)
+    
+    status_placeholder.info("📚 கூகுள் டிரைவில் இருந்து புத்தகங்கள் டவுன்லோட் ஆகுவது ஆரம்பமாகிறது...")
+    progress_bar.progress(25)
+    
+    try:
+        gdown.download_folder(url, output=BOOKS_DIR, quiet=True, use_cookies=False)
+        progress_bar.progress(100)
+        final_files = glob.glob(os.path.join(BOOKS_DIR, '**', '*.pdf'), recursive=True)
+        status_placeholder.success(f"அருமை! வெற்றிகரமாக {len(final_files)} புத்தகங்கள் டவுன்லோட் ஆகிவிட்டன!")
+        return f"Completed: {len(final_files)} books"
+    except Exception as e:
+        status_placeholder.error(f"டவுன்லோட் செய்வதில் சிக்கல்: {e}")
+        return "Error"
+
+download_status = download_drive_books_with_status()
+
+# --- 4. 8-ஆம் வகுப்பு CBSE பாடத்திட்ட அமைப்பு ---
+cbse_syllabus = {
+    "Mathematics (கணிதம்)": ["Part 1", "Part 2"],
+    "Social Science (சமூக அறிவியல்)": ["Part 1", "Part 2"],
+    "Science (அறிவியல்)": ["Full Book"],
+    "English (ஆங்கிலம்)": ["Full Book"],
+    "Hindi (இந்தி)": ["Full Book"],
+    "Sanskrit (சமஸ்கிருதம்)": ["Full Book"]
+}
+
+def find_matching_pdf(subject_name, part_name):
+    all_pdfs = glob.glob(os.path.join(BOOKS_DIR, '**', '*.pdf'), recursive=True)
+    if not all_pdfs:
+        all_pdfs = glob.glob('*.pdf')
+    
+    for path in all_pdfs:
+        fname = os.path.basename(path).lower()
+        sub_key = subject_name.split()[0].lower()
+        if sub_key in fname:
+            if "part" in part_name.lower():
+                if part_name.lower().replace(" ", "") in fname.replace(" ", ""):
+                    return path
+            else:
+                return path
+    return all_pdfs[0] if all_pdfs else ""
+
+subjects_flat_list = []
+for subj, parts in cbse_syllabus.items():
+    for p in parts:
+        subjects_flat_list.append(f"{subj} - {p}")
+
+if "memories" not in st.session_state:
+    st.session_state.memories = {item: [] for item in subjects_flat_list}
+if "chat_sessions" not in st.session_state:
+    st.session_state.chat_sessions = {}
+if "score" not in st.session_state:
+    st.session_state.score = 0
+
+# --- 5. தலைப்பு மற்றும் ஸ்கோர் போர்டு ---
+col_title, col_score = st.columns([3, 1])
+with col_title:
+    st.title("🎓 ஜிஷ்ணுவின் சூப்பர் கிளாஸ்ரூம்")
+with col_score:
+    st.header(f"🏆 ஸ்கோர்: {st.session_state.score}")
+
+# --- 6. பக்கவாட்டு மெனு ---
+with st.sidebar:
+    st.header("📚 பாடத்தைத் தேர்ந்தெடு")
+    st.markdown(f"📦 **டவுன்லோட் நிலை:** {download_status}")
+    
+    selected_subject = st.selectbox("சப்ஜெக்ட்:", list(cbse_syllabus.keys()))
+    selected_part = st.selectbox("புத்தகம் / பகுதி:", cbse_syllabus[selected_subject])
+    page_number = st.number_input("பக்க எண்:", min_value=1, max_value=1000, value=1)
+    
+    current_selection_key = f"{selected_subject} - {selected_part}"
+    pdf_path = find_matching_pdf(selected_subject, selected_part)
+
+if current_selection_key not in st.session_state.chat_sessions:
+    try:
+        st.session_state.chat_sessions[current_selection_key] = model.start_chat(history=[])
+    except:
+        pass
+
+# --- 7. மெயின் திரை (PDF மற்றும் உரையாடல்) ---
+col1, col2 = st.columns([1, 1])
+
+with col1:
+    st.subheader(f"📖 {selected_subject} ({selected_part})")
+    page_text = ""
+    
+    if pdf_path and os.path.exists(pdf_path):
+        try:
+            doc = fitz.open(pdf_path)
+            if page_number <= len(doc):
+                page = doc.load_page(page_number - 1)
+                pix = page.get_pixmap()
+                img_bytes = pix.tobytes("png")
+                st.image(img_bytes, caption=f"பக்கம் {page_number} (மொத்த பக்கங்கள்: {len(doc)})", use_column_width=True)
+                
+                page_text = page.get_text("text")
+                with st.expander("🔍 இந்த பக்கத்தில் உள்ள முக்கிய வரிகள்"):
+                    st.write(page_text)
+            else:
+                st.error(f"இந்தப் புத்தகத்தில் மொத்தம் {len(doc)} பக்கங்கள் மட்டுமே உள்ளன.")
+        except Exception as e:
+            st.error(f"PDF வாசிப்பதில் பிழை: {e}")
+    else:
+        st.warning("📁 புத்தகங்கள் இன்னும் முழுமையாக லோட் ஆகவில்லை. சைட் பாரில் உள்ள நிலையைப் பார்க்கவும்.")
+
+with col2:
+    st.subheader(f"👩‍🏫 {selected_subject} ஆசிரியர்")
+    
+    for msg in st.session_state.memories[current_selection_key]:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    st.write("🎤 **மைக்கில் பேசு:**")
+    voice_input = speech_to_text(language='ta-IN', use_container_width=True, just_once=True, key='mic')
+    
+    text_input = st.chat_input("அல்லது இங்கே டைப் செய்...")
+    user_input = voice_input if voice_input else text_input
+
+    if user_input:
+        with st.chat_message("user"):
+            st.markdown(user_input)
+        st.session_state.memories[current_selection_key].append({"role": "user", "content": user_input})
+        
+        with st.chat_message("assistant"):
+            with st.spinner("ஆசிரியர் அன்புடனும் பொறுமையாகவும் பதிலளிக்கிறார்..."):
+                try:
+                    full_prompt = f"மாணவன் ஜிஷ்ணுவின் கேள்வி/பதில்: {user_input}\n\nதற்போது அவன் படிக்கும் புத்தகப் பக்கம்: {page_text}"
+                    chat_session = st.session_state.chat_sessions.get(current_selection_key)
+                    if chat_session:
+                        response = chat_session.send_message(full_prompt)
+                        bot_reply = response.text
+                    else:
+                        bot_reply = "மன்னிக்கவும் கண்ணா, ஜெமினி கனெக்ஷன் சரியில்லை. தயவுசெய்து API Key-ஐச் சரிபார்க்கவும்."
+                    
+                    st.markdown(bot_reply)
+                    
+                    if "10 பாயிண்டுகள்" in bot_reply:
+                        st.session_state.score += 10
+                    
+                    try:
+                        tts = gTTS(text=bot_reply, lang='ta')
+                        tts.save("reply.mp3")
+                        audio_file = open("reply.mp3", "rb")
+                        audio_bytes = audio_file.read()
+                        audio_base64 = base64.b64encode(audio_bytes).decode()
+                        audio_html = f'<audio autoplay controls><source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3"></audio>'
+                        st.markdown(audio_html, unsafe_allow_html=True)
+                    except:
+                        pass
+                except Exception as api_err:
+                    bot_reply = f"API பிழை ஏற்பட்டுள்ளது: {str(api_err)}. தயவுசெய்து உங்கள் ஜெமினி API Key சரியானதா எனச் சரிபார்க்கவும்."
+                    st.error(bot_reply)
+
+        st.session_state.memories[current_selection_key].append({"role": "assistant", "content": bot_reply})
+        st.rerun()import streamlit as st
+import google.generativeai as genai
+import fitz  # PyMuPDF
+from gtts import gTTS
+import base64
+import os
+import glob
+import gdown
+from streamlit_mic_recorder import speech_to_text
+
+# --- 1. API செட்டப் ---
 # உங்கள் உண்மையான ஜெமினி API Key-ஐ (AIzaSy... என்று தொடங்குவதை) இங்கே போடவும்
 API_KEY = "AQ.Ab8RN6JARqdri9ZKhwUiEN6iPXVng1LSaFQPVvQ3TZVmaUJV8w"
 

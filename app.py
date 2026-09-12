@@ -149,7 +149,12 @@ col_title, col_score = st.columns([3, 1])
 with col_title: st.title("🎓 Jishnu's Smart AI Classroom")
 with col_score: st.header(f"🏆 Score: {st.session_state.score} PTS")
 
-tab_classroom, tab_test = st.tabs(["📖 Interactive Page Classroom", "📝 AI Evaluation & Quizzes"])
+tab_classroom, tab_test, tab_english, tab_hindi = st.tabs([
+    "📖 Classroom", 
+    "📝 Exams", 
+    "🗣️ Spoken English", 
+    "🗣️ Spoken Hindi"
+])
 
 with tab_classroom:
     col1, col2 = st.columns([1, 1.2])
@@ -247,4 +252,53 @@ with tab_classroom:
             st.rerun()
 
 with tab_test:
-    st.write("Exams and Quizzes go here.")
+    with tab_english:
+    st.header("🗣️ Spoken English Lab")
+    st.write("ஜிஸ்னு, நீ இப்போது படித்துக் கொண்டிருக்கும் பக்கத்தில் உள்ள ஆங்கில வார்த்தைகளையும், வாக்கியம் அமைக்கும் முறையையும் இங்கே கற்றுக் கொள்வோம்!")
+    
+    if st.button("🚀 இந்தப் பக்கத்தின் English பாடத்தைத் தொடங்கு"):
+        if page_text:
+            with st.spinner("ஆங்கில ஆசிரியை தயார் ஆகிறார்..."):
+                eng_prompt = f"""
+                Act as Jishnu's Spoken English teacher. Based on this page text: {page_text[:1500]}
+                1. Pick 3 hard English words from this page. Force him to say them aloud. Give Tamil meaning and pronunciation.
+                2. Take 1 simple sentence from the text. Break it down and explain how to form a sentence (Subject, Verb).
+                3. Ask him to form a new simple sentence based on what he learned.
+                Respond strictly in JSON with "display_text" (Markdown) and "spoken_tamil" (Conversational Tamil teaching him English).
+                """
+                reply_json, _, _ = generate_ai_response([eng_prompt])
+                try:
+                    eng_data = json.loads(reply_json)
+                    st.markdown(eng_data.get("display_text", ""))
+                    audio_fp = text_to_audio_bytes(eng_data.get("spoken_tamil", ""))
+                    if audio_fp:
+                        st.audio(audio_fp.getvalue(), format="audio/mp3", autoplay=True)
+                except:
+                    st.markdown(reply_json)
+        else:
+            st.warning("முதலில் ஒரு PDF ஃபைலைத் தேர்ந்தெடு ஜிஸ்னு!")
+
+with tab_hindi:
+    st.header("🗣️ Spoken Hindi Lab")
+    st.write("ஜிஸ்னு, இந்தப் பாடத்தின் கருத்துகளை வைத்து கொஞ்சம் ஹிந்தி பேசுவோமா?")
+    
+    if st.button("🚀 இந்தப் பக்கத்தின் Hindi பாடத்தைத் தொடங்கு"):
+        if page_text:
+            with st.spinner("ஹிந்தி ஆசிரியை தயார் ஆகிறார்..."):
+                hin_prompt = f"""
+                Act as Jishnu's Spoken Hindi teacher. Based on this page text: {page_text[:1500]}
+                1. Teach 3 useful Hindi words related to the current topic (with Tamil translation & pronunciation).
+                2. Teach one simple conversational sentence in Hindi related to this page.
+                Respond strictly in JSON with "display_text" (Markdown) and "spoken_tamil" (Conversational Tamil teaching him Hindi).
+                """
+                reply_json, _, _ = generate_ai_response([hin_prompt])
+                try:
+                    hin_data = json.loads(reply_json)
+                    st.markdown(hin_data.get("display_text", ""))
+                    audio_fp = text_to_audio_bytes(hin_data.get("spoken_tamil", ""))
+                    if audio_fp:
+                        st.audio(audio_fp.getvalue(), format="audio/mp3", autoplay=True)
+                except:
+                    st.markdown(reply_json)
+        else:
+            st.warning("முதலில் ஒரு PDF ஃபைலைத் தேர்ந்தெடு ஜிஸ்னு!")

@@ -8,7 +8,7 @@ import requests
 from streamlit_mic_recorder import speech_to_text # மைக்ரோஃபோன் வசதிக்காக
 
 # 1. API செட்டப்
-API_KEY = "YOUR_GEMINI_API_KEY_HERE"
+API_KEY = "AQ.Ab8RN6K3cb-7jBBUdAuJsAcfALtzSdUoWEVJdLAPDfqUmgK7GA"
 genai.configure(api_key=API_KEY)
 
 # 2. ஜெமினிக்கான மேம்படுத்தப்பட்ட ஆசிரியர் Prompt (Language Progression & Points)

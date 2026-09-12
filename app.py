@@ -282,14 +282,14 @@ with tab_classroom:
         st.subheader("👩‍🏫 AI Smart Teacher Interface")
         
         # Render Chat History
-        for index, msg in enumerate(st.session_state.memories[session_key]):
+        for msg in st.session_state.memories[session_key]:
             with st.chat_message(msg["role"]):
                 if "image" in msg:
                     st.image(msg["image"], width="stretch")
                 st.markdown(msg["content"])
                 if "audio" in msg and msg["audio"]:
-                    # இங்கு key=f"audio_history_{index}" என்று சேர்த்துள்ளோம்
-                    st.audio(msg["audio"], format="audio/mp3", key=f"audio_history_{index}")
+                    # 'key' நீக்கப்பட்டு .getvalue() சேர்க்கப்பட்டுள்ளது
+                    st.audio(msg["audio"].getvalue(), format="audio/mp3")
 
         st.divider()
         
@@ -386,8 +386,8 @@ with tab_classroom:
                     # Generate Spoken Audio Response using exclusively pure Tamil text
                     audio_fp = text_to_audio_bytes(spoken_tamil)
                     if audio_fp:
-                        unique_id = str(uuid.uuid4())[:8] # பாதுகாப்பான ID உருவாக்கம்
-                        st.audio(audio_fp, format="audio/mp3", autoplay=True, key=f"audio_{unique_id}")
+                        # uuid மற்றும் key இரண்டும் நீக்கப்பட்டு .getvalue() சேர்க்கப்பட்டுள்ளது
+                        st.audio(audio_fp.getvalue(), format="audio/mp3", autoplay=True)
 
             st.session_state.memories[session_key].append({
                 "role": "assistant", 

@@ -4,3 +4,4 @@ pymupdf
 gTTS
 streamlit-mic-recorder
 requests
+gdown

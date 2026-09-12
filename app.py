@@ -8,6 +8,7 @@ import os
 import glob
 import json
 import time
+import uuid
 from gtts import gTTS
 
 # Voice recorder import with fallback
@@ -20,9 +21,10 @@ except ImportError:
 # ==========================================
 # 1. API KEYS & SMART ENGINE CONFIGURATION
 # ==========================================
+# பாதுகாப்பான முறையில் இரண்டு API Key-களை எடுக்கிறோம்
 API_KEYS = [
-    "AQ.Ab8RN6KMs02wjOOO1wINmU6pept-ubzqwvtsd83E9bMaVPZS_w",
-    "AQ.Ab8RN6Jgvr4ozXjJBOP9S6GQS3DUPlrXAyhiTbp7cPAij51gVg",
+    st.secrets["GEMINI_API_KEY_1"],
+    st.secrets["GEMINI_API_KEY_2"]
 ]
 
 cooldown_tracker = {}
@@ -385,7 +387,7 @@ with tab_classroom:
                     audio_fp = text_to_audio_bytes(spoken_tamil)
                     if audio_fp:
                         # இங்கு தனிப்பட்ட key-ஐ சேர்த்துள்ளோம்
-                        st.audio(audio_fp, format="audio/mp3", autoplay=True, key=f"audio_new_{time.time()}")
+                        st.audio(audio_fp, format="audio/mp3", autoplay=True, key=f"audio_new_{uuid.uuid4().hex}")
 
             st.session_state.memories[session_key].append({
                 "role": "assistant", 
